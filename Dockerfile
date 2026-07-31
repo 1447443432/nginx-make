@@ -9,7 +9,11 @@ COPY nginx ./nginx
 COPY modules ./modules
 COPY build.sh .
 
-RUN cp docker/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo \
+RUN if [ "${TARGETARCH}" = "arm64" ]; then \
+        cp docker/yum/CentOS-Base-arm64.repo /etc/yum.repos.d/CentOS-Base.repo; \
+    else \
+        cp docker/yum/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo; \
+    fi \
     && yum clean all \
     && yum makecache fast \
         --setopt=timeout=60 \

@@ -53,6 +53,7 @@ docker_build()
     start=$(date +%s)
 
     if docker build \
+        --platform linux/${ARCH} \
         --no-cache \
         --build-arg TARGETARCH="${ARCH}" \
         -t "${IMAGE_NAME}" \
@@ -74,9 +75,10 @@ docker_check()
 
     docker run \
         --rm \
+        --entrypoint /bin/bash \
         --user 0:0 \
         "${IMAGE_NAME}" \
-        id
+        -c "id"
 }
 
 docker_run()
