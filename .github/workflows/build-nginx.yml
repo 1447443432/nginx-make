@@ -2,6 +2,9 @@ name: Build nginx
 
 on:
   workflow_dispatch:
+  #push:
+    #branches:
+      #- master
 
 jobs:
 

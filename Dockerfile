@@ -26,4 +26,6 @@ RUN cp docker/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo \
         perl \
     && chmod +x build.sh
 
+USER root
+
 ENTRYPOINT ["./build.sh"]
