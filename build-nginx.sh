@@ -96,7 +96,6 @@ run_long_stage()
     shift
 
     "$@" &
-
     local pid=$!
 
     show_progress "${pid}" "${name}"
@@ -106,6 +105,11 @@ run_long_stage()
         echo "[OK] ${name}"
     else
         echo "[ERROR] ${name}"
+        if [ -f "${DOCKER_LOG}" ]; then
+            echo "========== last log =========="
+            tail -100 "${DOCKER_LOG}" || true
+            echo "=============================="
+        fi
         exit 1
     fi
 }

@@ -16,6 +16,12 @@ if [ -n "${1:-}" ]; then
     NGINX_VERSION="$1"
 fi
 
+if [ -t 1 ]; then
+    INTERACTIVE=true
+else
+    INTERACTIVE=false
+fi
+
 OUTPUT_DIR=${OUTPUT_DIR:-/output}
 
 BUILD_LOG=${OUTPUT_DIR}/build.log
@@ -113,52 +119,35 @@ show_progress()
 {
     local pid=$1
     local name=$2
-
     local start
-
     start=$(date +%s)
 
     if [ "${INTERACTIVE}" = "true" ]; then
-
+        local index=1
         while kill -0 "${pid}" 2>/dev/null
         do
             sleep 1
-
             local cost
             local dots
-
             cost=$(( $(date +%s)-start ))
-
-            case $((cost%3)) in
-                0)
-                    dots="."
-                    ;;
-                1)
-                    dots=".."
-                    ;;
-                2)
-                    dots="..."
-                    ;;
+            case ${index} in
+                1) dots="." ;;
+                2) dots=".." ;;
+                3) dots="..." ;;
             esac
-
-            printf "\033[2K\r[INFO] %s running%s %ss" \
-            "${name}" \
-            "${dots}" \
-            "${cost}"
-
+            printf "\r[INFO] %s running%s %ss" "${name}" "${dots}" "${cost}"
+            index=$((index+1))
+            if [ "${index}" -gt 3 ]; then
+                index=1
+            fi
         done
-
         echo ""
-
     else
-
         echo "[INFO] ${name} running..."
-
         while kill -0 "${pid}" 2>/dev/null
         do
             sleep 5
         done
-
     fi
 }
 
@@ -168,19 +157,22 @@ run_long_stage()
     local name=$1
     shift
 
-    stage_start
-
-    "$@" >> "${BUILD_LOG}" 2>&1 &
-
+    "$@" &
     local pid=$!
 
     show_progress "${pid}" "${name}"
 
     if wait "${pid}"
     then
-        stage_success "${name}"
+        echo "[OK] ${name}"
     else
-        stage_fail "${name}"
+        echo "[ERROR] ${name}"
+        if [ -f "${DOCKER_LOG}" ]; then
+            echo "========== last log =========="
+            tail -100 "${DOCKER_LOG}" || true
+            echo "=============================="
+        fi
+        exit 1
     fi
 }
 
