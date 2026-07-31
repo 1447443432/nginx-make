@@ -28,7 +28,18 @@ BUILD_LOG=${OUTPUT_DIR}/build.log
 STAGE_LOG=${OUTPUT_DIR}/stage-time.log
 BUILD_INFO=${OUTPUT_DIR}/build-info.txt
 
-BUILD_JOBS=${BUILD_JOBS:-$(nproc)}
+if [ -n "${BUILD_JOBS:-}" ]; then
+    BUILD_JOBS=${BUILD_JOBS}
+else
+    case "${ARCH}" in
+        arm64)
+            BUILD_JOBS=2
+            ;;
+        *)
+            BUILD_JOBS=$(nproc)
+            ;;
+    esac
+fi
 
 DEBUG=${DEBUG:-false}
 
@@ -353,6 +364,8 @@ configure_nginx()
 compile_nginx()
 {
     cd "${NGINX_DIR}"
+
+    echo "build jobs=${BUILD_JOBS}"
 
     make -j"${BUILD_JOBS}"
 }

@@ -21,24 +21,17 @@ on:
 permissions:
   contents: write
 
-jobs:
-  build:
-    name: Build nginx (${{ matrix.arch }})
-    strategy:
-      fail-fast: false
-      matrix:
-        arch:
-          - amd64
-          - arm64
+env:
+  ARTIFACT_RETENTION_DAYS: 7
 
+jobs:
+  build-amd64:
+    name: Build nginx amd64
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Setup Buildx
         uses: docker/setup-buildx-action@v3
@@ -48,12 +41,9 @@ jobs:
           chmod +x build-nginx.sh
           chmod +x build.sh
           if [ -n "${{ github.event.inputs.nginx_version }}" ]; then
-            ./build-nginx.sh \
-              "${{ matrix.arch }}" \
-              "${{ github.event.inputs.nginx_version }}"
+            ./build-nginx.sh amd64 "${{ github.event.inputs.nginx_version }}"
           else
-            ./build-nginx.sh \
-              "${{ matrix.arch }}"
+            ./build-nginx.sh amd64
           fi
 
       - name: Verify sha256
@@ -68,15 +58,60 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nginx-${{ matrix.arch }}
+          name: nginx-amd64
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
           path: |
             output/*.tar.gz
             output/*.sha256
             output/build-info.txt
 
+
+  build-arm64:
+    name: Build nginx arm64
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build nginx
+        run: |
+          chmod +x build-nginx.sh
+          chmod +x build.sh
+          if [ -n "${{ github.event.inputs.nginx_version }}" ]; then
+            ./build-nginx.sh arm64 "${{ github.event.inputs.nginx_version }}"
+          else
+            ./build-nginx.sh arm64
+          fi
+
+      - name: Verify sha256
+        run: |
+          cd output
+          sha256sum -c *.sha256
+
+      - name: Show output
+        run: |
+          ls -lh output
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-arm64
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          path: |
+            output/*.tar.gz
+            output/*.sha256
+            output/build-info.txt
+
+
   release:
     name: Create Release
-    needs: build
+    needs:
+      - build-amd64
+      - build-arm64
     runs-on: ubuntu-latest
 
     steps:
@@ -86,8 +121,12 @@ jobs:
       - name: Read nginx version
         id: version
         run: |
-          source config/nginx-version.conf
-          echo "version=${NGINX_VERSION}" >> $GITHUB_OUTPUT
+          if [ -n "${{ github.event.inputs.nginx_version }}" ]; then
+            echo "version=${{ github.event.inputs.nginx_version }}" >> $GITHUB_OUTPUT
+          else
+            source config/nginx-version.conf
+            echo "version=${NGINX_VERSION}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -104,6 +143,7 @@ jobs:
             \( \
               -name "*.tar.gz" \
               -o -name "*.sha256" \
+              -o -name "build-info.txt" \
             \) \
             -exec cp {} release/ \;
 
