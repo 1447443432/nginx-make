@@ -14,6 +14,7 @@ RUN if [ "${TARGETARCH}" = "arm64" ]; then \
     else \
         cp docker/yum/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo; \
     fi \
+    && cat /etc/yum.repos.d/CentOS-Base.repo \
     && yum clean all \
     && yum makecache fast \
         --setopt=timeout=60 \

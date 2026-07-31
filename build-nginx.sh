@@ -44,24 +44,84 @@ cost_time()
     echo "$(( $(date +%s)-$1 ))s"
 }
 
-docker_build()
+show_progress()
 {
+    local pid=$1
+    local name=$2
+
     local start
-
-    echo "========== docker build =========="
-
     start=$(date +%s)
 
-    if docker build \
+    local index=1
+
+    while kill -0 "${pid}" 2>/dev/null
+    do
+        sleep 1
+
+        local cost
+        local dots
+
+        cost=$(( $(date +%s)-start ))
+
+        case ${index} in
+            1)
+                dots="."
+                ;;
+            2)
+                dots=".."
+                ;;
+            3)
+                dots="..."
+                ;;
+        esac
+
+        printf "\r[INFO] %s running%s %ss" \
+            "${name}" \
+            "${dots}" \
+            "${cost}"
+
+        index=$((index+1))
+
+        if [ "${index}" -gt 3 ]; then
+            index=1
+        fi
+    done
+
+    echo ""
+}
+
+run_long_stage()
+{
+    local name=$1
+    shift
+
+    "$@" &
+
+    local pid=$!
+
+    show_progress "${pid}" "${name}"
+
+    if wait "${pid}"
+    then
+        echo "[OK] ${name}"
+    else
+        echo "[ERROR] ${name}"
+        exit 1
+    fi
+}
+
+docker_build()
+{
+    docker build \
         --platform linux/${ARCH} \
         --no-cache \
         --build-arg TARGETARCH="${ARCH}" \
         -t "${IMAGE_NAME}" \
         . \
         >"${DOCKER_LOG}" 2>&1
-    then
-        echo "[OK] docker build ($(cost_time ${start}))"
-    else
+
+    if [ $? -ne 0 ]; then
+        echo ""
         echo "[ERROR] docker build failed"
         echo "log:"
         tail -100 "${DOCKER_LOG}" || true
@@ -71,8 +131,6 @@ docker_build()
 
 docker_check()
 {
-    echo "========== docker check =========="
-
     docker run \
         --rm \
         --entrypoint /bin/bash \
@@ -83,20 +141,12 @@ docker_check()
 
 docker_run()
 {
-    local start
-
-    echo "========== docker run =========="
-
-    start=$(date +%s)
-
     docker run \
         --rm \
         --user 0:0 \
         -e NGINX_VERSION="${NGINX_VERSION}" \
         -v "${OUTPUT_DIR}:/output" \
         "${IMAGE_NAME}"
-
-    echo "[OK] docker run ($(cost_time ${start}))"
 }
 
 check_result()
@@ -132,9 +182,16 @@ main()
 {
     init_env
     print_header
-    docker_build
+
+    echo "========== docker build =========="
+    run_long_stage "docker build" docker_build
+
+    echo "========== docker check =========="
     docker_check
-    docker_run
+
+    echo "========== docker run =========="
+    run_long_stage "docker run" docker_run
+
     check_result
 }
 

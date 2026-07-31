@@ -395,20 +395,16 @@ package_nginx()
     | grep -oE '[0-9]+\.[0-9]+' \
     | head -1)
 
-
     PACKAGE_NAME="nginx-${NGINX_VERSION}-glibc${glibc}-${BUILD_ARCH}.tar.gz"
-
 
     tar czf \
     "${OUTPUT_DIR}/${PACKAGE_NAME}" \
-    -C /usr/local \
-    nginx
+    -C /usr/local nginx
 
-
-    sha256sum \
-    "${OUTPUT_DIR}/${PACKAGE_NAME}" \
-    > "${OUTPUT_DIR}/${PACKAGE_NAME}.sha256"
-
+    (
+        cd "${OUTPUT_DIR}"
+        sha256sum "${PACKAGE_NAME}"
+    ) > "${OUTPUT_DIR}/${PACKAGE_NAME}.sha256"
 
     cat > "${BUILD_INFO}" <<EOF
 nginx_version=${NGINX_VERSION}

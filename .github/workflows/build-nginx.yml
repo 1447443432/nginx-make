@@ -58,7 +58,8 @@ jobs:
 
       - name: Verify sha256
         run: |
-          sha256sum -c output/*.sha256
+          cd output
+          sha256sum -c *.sha256
 
       - name: Show output
         run: |
@@ -113,5 +114,7 @@ jobs:
           tag_name: nginx-${{ steps.version.outputs.version }}
           name: nginx-${{ steps.version.outputs.version }}
           generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
           files: |
             release/*
