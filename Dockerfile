@@ -21,9 +21,11 @@ RUN cp docker/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo \
         gcc-c++ \
         make \
         wget \
+        curl \
         patch \
         tar \
         perl \
+        file \
     && chmod +x build.sh
 
 USER root
