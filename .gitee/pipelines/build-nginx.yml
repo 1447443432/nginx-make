@@ -1,0 +1,78 @@
+kind: pipeline
+
+name: nginx-build
+
+
+trigger:
+
+  manual:
+
+
+steps:
+
+
+- name: build-amd64
+
+  commands:
+
+  - chmod +x build-nginx.sh
+
+  - ./build-nginx.sh amd64
+
+
+
+- name: save-amd64
+
+  commands:
+
+  - mkdir -p release
+
+  - cp output/*.tar.gz release/
+
+  - cp output/*.sha256 release/
+
+  - cp output/build-info.txt release/build-info-amd64.txt
+
+
+
+- name: clean
+
+  commands:
+
+  - rm -rf output
+
+
+
+- name: build-arm64
+
+  commands:
+
+  - ./build-nginx.sh arm64
+
+
+
+- name: save-arm64
+
+  commands:
+
+  - cp output/*.tar.gz release/
+
+  - cp output/*.sha256 release/
+
+  - cp output/build-info.txt release/build-info-arm64.txt
+
+
+
+- name: verify
+
+  commands:
+
+  - sha256sum -c release/*.sha256
+
+
+
+- name: result
+
+  commands:
+
+  - ls -lh release

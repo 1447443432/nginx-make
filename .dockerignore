@@ -1,0 +1,6 @@
+.git
+.github
+.gitee
+output
+*.log
+README.md
