@@ -52,6 +52,9 @@ SUB_FILTER_VERSION="0.6.4"
 PROXY_CONNECT_VERSION="0.0.7"
 UPSTREAM_CHECK_VERSION="0.4.0"
 
+# -Wno-error
+NGINX_CC_OPT=""
+
 mkdir -p "${OUTPUT_DIR}"
 
 : > "${BUILD_LOG}"
@@ -112,6 +115,21 @@ run_stage()
     "$@" >> "${BUILD_LOG}" 2>&1 || stage_fail "${name}"
 
     stage_success "${name}"
+}
+
+# -Wno-error
+select_cc_opt()
+{
+    case "${NGINX_VERSION}" in
+        1.31.*)
+            NGINX_CC_OPT="-Wno-error"
+            ;;
+        *)
+            NGINX_CC_OPT=""
+            ;;
+    esac
+
+    echo "cc_opt=${NGINX_CC_OPT}"
 }
 
 show_progress()
@@ -311,8 +329,15 @@ configure_nginx()
 {
     cd "${NGINX_DIR}"
 
+    local cc_opt=""
+
+    if [ -n "${NGINX_CC_OPT}" ]; then
+        cc_opt="--with-cc-opt=${NGINX_CC_OPT}"
+    fi
+
     ./configure \
     --prefix=/usr/local/nginx \
+    ${cc_opt} \
     --add-module=../../nginx-modules/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION} \
     --add-module=../../nginx-modules/ngx_http_proxy_connect_module-${PROXY_CONNECT_VERSION} \
     --add-module=../../nginx-modules/nginx_upstream_check_module-${UPSTREAM_CHECK_VERSION} \
@@ -401,6 +426,7 @@ main()
 {
     run_stage "validate version" validate_version
     run_stage "detect arch" detect_arch
+    run_stage "select cc opt" select_cc_opt
     run_stage "download nginx" download_nginx
     run_stage "detect nginx" detect_nginx
     run_stage "select patch" select_patch
