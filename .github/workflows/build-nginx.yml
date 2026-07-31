@@ -96,7 +96,8 @@ jobs:
 
       - name: Merge files
         run: |
-          mkdir release
+          rm -rf release
+          mkdir -p release
 
           find artifacts \
             -type f \
