@@ -1,7 +1,7 @@
 ARG TARGETARCH=amd64
 
 # FROM registry.cn-hangzhou.aliyuncs.com/hap-mdy/linux_${TARGETARCH}_centos:7.9.2009
-FROM registry.cn-hangzhou.aliyuncs.com/jing-images/linux_${TARGETARCH}_centos_builder:7.9.2009
+FROM registry.cn-shanghai.aliyuncs.com/jing-images/linux_${TARGETARCH}_centos_builder:7.9.2009
 
 WORKDIR /data/mdtemp
 
