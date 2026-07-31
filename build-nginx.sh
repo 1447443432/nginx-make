@@ -13,6 +13,12 @@ DOCKER_LOG="${OUTPUT_DIR}/docker-build.log"
 
 START_TIME=$(date +%s)
 
+if [ -t 1 ] && [ -z "${GITHUB_ACTIONS:-}" ]; then
+    INTERACTIVE=true
+else
+    INTERACTIVE=false
+fi
+
 init_env()
 {
     mkdir -p "${OUTPUT_DIR}"
@@ -49,45 +55,20 @@ show_progress()
     local pid=$1
     local name=$2
 
-    local start
-    start=$(date +%s)
-
-    local index=1
-
-    while kill -0 "${pid}" 2>/dev/null
-    do
-        sleep 1
-
-        local cost
-        local dots
-
-        cost=$(( $(date +%s)-start ))
-
-        case ${index} in
-            1)
-                dots="."
-                ;;
-            2)
-                dots=".."
-                ;;
-            3)
-                dots="..."
-                ;;
-        esac
-
-        printf "\r[INFO] %s running%s %ss" \
-            "${name}" \
-            "${dots}" \
-            "${cost}"
-
-        index=$((index+1))
-
-        if [ "${index}" -gt 3 ]; then
-            index=1
-        fi
-    done
-
-    echo ""
+    if [ "${INTERACTIVE}" = "true" ]; then
+        while kill -0 "${pid}" 2>/dev/null
+        do
+            printf "\r[INFO] %s running..." "${name}"
+            sleep 1
+        done
+        echo ""
+    else
+        echo "[INFO] ${name} running..."
+        while kill -0 "${pid}" 2>/dev/null
+        do
+            sleep 30
+        done
+    fi
 }
 
 run_long_stage()
@@ -116,20 +97,21 @@ run_long_stage()
 
 docker_build()
 {
-    docker build \
+    if docker build \
         --platform linux/${ARCH} \
         --no-cache \
         --build-arg TARGETARCH="${ARCH}" \
         -t "${IMAGE_NAME}" \
         . \
         >"${DOCKER_LOG}" 2>&1
-
-    if [ $? -ne 0 ]; then
+    then
+        return 0
+    else
         echo ""
         echo "[ERROR] docker build failed"
         echo "log:"
         tail -100 "${DOCKER_LOG}" || true
-        exit 1
+        return 1
     fi
 }
 
