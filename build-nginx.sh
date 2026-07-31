@@ -37,6 +37,12 @@ if [ "${DEBUG}" = "true" ]; then
     set -x
 fi
 
+if [ -t 1 ]; then
+    INTERACTIVE=true
+else
+    INTERACTIVE=false
+fi
+
 START_TIME=$(date +%s)
 STAGE_START=0
 
@@ -78,38 +84,64 @@ show_progress()
 {
     local pid=$1
     local name=$2
-    local start
-    local index=1
 
+    local start
     start=$(date +%s)
 
-    while kill -0 "${pid}" 2>/dev/null
-    do
-        sleep 1
+    local index=1
 
-        local now
-        local cost
-        local dots
+    if [ "${INTERACTIVE}" = "true" ]; then
 
-        now=$(date +%s)
-        cost=$((now-start))
+        while kill -0 "${pid}" 2>/dev/null
+        do
+            sleep 1
 
-        case ${index} in
-            1) dots="." ;;
-            2) dots=".." ;;
-            3) dots="..." ;;
-        esac
+            local now
+            local cost
+            local dots
 
-        printf "\r[INFO] %s running%s %ss" "${name}" "${dots}" "${cost}"
+            now=$(date +%s)
+            cost=$((now-start))
 
-        index=$((index+1))
+            case ${index} in
+                1)
+                    dots="."
+                    ;;
+                2)
+                    dots=".."
+                    ;;
+                3)
+                    dots="..."
+                    ;;
+            esac
 
-        if [ "${index}" -gt 3 ]; then
-            index=1
-        fi
-    done
+            printf "\r[INFO] %s running%s %ss" \
+            "${name}" \
+            "${dots}" \
+            "${cost}"
 
-    echo ""
+
+            index=$((index+1))
+
+            if [ "${index}" -gt 3 ]; then
+                index=1
+            fi
+
+        done
+
+        echo ""
+
+    else
+
+        echo "[INFO] ${name} running..."
+
+
+        while kill -0 "${pid}" 2>/dev/null
+        do
+            sleep 5
+        done
+
+    fi
 }
 
 run_long_stage()
