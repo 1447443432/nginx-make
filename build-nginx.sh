@@ -8,6 +8,7 @@ ARCH=${1:-amd64}
 VERSION_ARG=${2:-}
 
 OUTPUT_DIR="${BASE_DIR}/output"
+CONTAINER_OUTPUT_DIR=${CONTAINER_OUTPUT_DIR:-/output}
 IMAGE_NAME="nginx-builder:${ARCH}"
 DOCKER_LOG="${OUTPUT_DIR}/docker-build.log"
 
@@ -130,8 +131,9 @@ docker_run()
     docker run \
         --rm \
         --user 0:0 \
+        -e OUTPUT_DIR="${CONTAINER_OUTPUT_DIR}" \
         -e NGINX_VERSION="${NGINX_VERSION}" \
-        -v "${OUTPUT_DIR}:/output" \
+        -v "${OUTPUT_DIR}:${CONTAINER_OUTPUT_DIR}" \
         "${IMAGE_NAME}"
 }
 

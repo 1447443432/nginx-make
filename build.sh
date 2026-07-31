@@ -42,6 +42,7 @@ else
 fi
 
 DEBUG=${DEBUG:-false}
+SHOW_BUILD_LOG=${SHOW_BUILD_LOG:-false}
 
 OPENSSL_VERSION="1.1.1w"
 PCRE_VERSION="8.45"
@@ -187,6 +188,11 @@ run_long_stage()
         echo "[OK] ${name}"
     else
         echo "[ERROR] ${name}"
+
+        echo "========== last log =========="
+        tail -100 "${BUILD_LOG}" || true
+        echo "=============================="
+
         exit 1
     fi
 }
@@ -334,7 +340,11 @@ compile_nginx()
 
     echo "build jobs=${BUILD_JOBS}"
 
-    make -j"${BUILD_JOBS}"
+    if [ "${SHOW_BUILD_LOG:-false}" = "true" ]; then
+        make -j"${BUILD_JOBS}"
+    else
+        make -j"${BUILD_JOBS}" >> "${BUILD_LOG}" 2>&1
+    fi
 }
 
 install_nginx()
