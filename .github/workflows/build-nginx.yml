@@ -129,19 +129,24 @@ jobs:
 
       - name: Merge files
         run: |
-          rm -rf release
-          mkdir -p release
+            rm -rf release
+            mkdir -p release
 
-          find artifacts \
+            find artifacts \
             -type f \
             \( \
-              -name "*.tar.gz" \
-              -o -name "*.sha256" \
-              -o -name "build-info.txt" \
+                -name "*.tar.gz" \
+                -o -name "*.sha256" \
             \) \
             -exec cp {} release/ \;
 
-          ls -lh release
+            cp artifacts/nginx-amd64/build-info.txt \
+            release/build-info-amd64.txt
+
+            cp artifacts/nginx-arm64/build-info.txt \
+            release/build-info-arm64.txt
+
+            ls -lh release
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
