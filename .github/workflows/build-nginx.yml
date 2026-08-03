@@ -123,6 +123,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.tag.outputs.tag }}
+      release_url: ${{ steps.create_release.outputs.url }}
+      release_assets: ${{ steps.create_release.outputs.assets }}
 
     steps:
       - name: Checkout
@@ -141,6 +143,12 @@ jobs:
             VERSION="${NGINX_VERSION}"
           fi
 
+          if [ -z "${VERSION}" ]; then
+            echo "错误：NGINX_VERSION 为空"
+            exit 1
+          fi
+
+          echo "Nginx Version：${VERSION}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Generate release tag
@@ -150,6 +158,8 @@ jobs:
           set -euo pipefail
 
           RELEASE_TAG="nginx-${{ steps.version.outputs.version }}"
+
+          echo "Release Tag：${RELEASE_TAG}"
           echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
 
       - name: Download artifact
@@ -179,9 +189,33 @@ jobs:
           cp artifacts/nginx-arm64/build-info.txt \
             release/build-info-arm64.txt
 
+          echo "准备发布的文件："
           ls -lh release
 
+          AMD64_COUNT="$(find release \
+            -maxdepth 1 \
+            -type f \
+            -name "*-amd64.tar.gz" \
+            | wc -l)"
+
+          ARM64_COUNT="$(find release \
+            -maxdepth 1 \
+            -type f \
+            -name "*-arm64.tar.gz" \
+            | wc -l)"
+
+          if [ "${AMD64_COUNT}" -ne 1 ]; then
+            echo "错误：amd64 tar.gz 数量不是 1，实际为 ${AMD64_COUNT}"
+            exit 1
+          fi
+
+          if [ "${ARM64_COUNT}" -ne 1 ]; then
+            echo "错误：arm64 tar.gz 数量不是 1，实际为 ${ARM64_COUNT}"
+            exit 1
+          fi
+
       - name: Create Release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
@@ -191,6 +225,23 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release/*
+
+      - name: Show Release information
+        shell: bash
+        env:
+          RELEASE_URL: ${{ steps.create_release.outputs.url }}
+          RELEASE_ASSETS: ${{ steps.create_release.outputs.assets }}
+        run: |
+          set -euo pipefail
+
+          echo "当前仓库：${GITHUB_REPOSITORY}"
+          echo "Release 地址：${RELEASE_URL}"
+          echo "Release 附件："
+
+          jq -r '
+            .[] |
+            "\(.name) -> \(.browser_download_url)"
+          ' <<< "${RELEASE_ASSETS}"
 
   sync-hap:
     name: Sync Release to HAP
@@ -204,6 +255,8 @@ jobs:
     env:
       VERSION: ${{ needs.release.outputs.version }}
       RELEASE_TAG: ${{ needs.release.outputs.tag }}
+      RELEASE_URL: ${{ needs.release.outputs.release_url }}
+      RELEASE_ASSETS: ${{ needs.release.outputs.release_assets }}
       HAP_WEBHOOK_URL: ${{ secrets.HAP_WEBHOOK_URL }}
 
     steps:
@@ -216,6 +269,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          echo "当前仓库：${GITHUB_REPOSITORY}"
+          echo "Nginx Version：${VERSION}"
+          echo "Release Tag：${RELEASE_TAG}"
+          echo "Release URL：${RELEASE_URL}"
+
+          if [ -z "${VERSION}" ]; then
+            echo "错误：VERSION 为空"
+            exit 1
+          fi
+
+          if [ -z "${RELEASE_TAG}" ]; then
+            echo "错误：RELEASE_TAG 为空"
+            exit 1
+          fi
+
+          if [ -z "${RELEASE_URL}" ]; then
+            echo "错误：RELEASE_URL 为空"
+            exit 1
+          fi
+
+          if [ -z "${RELEASE_ASSETS}" ]; then
+            echo "错误：RELEASE_ASSETS 为空"
+            exit 1
+          fi
+
+          echo "Release 附件列表："
+          jq -r '
+            .[] |
+            "\(.name) -> \(.browser_download_url)"
+          ' <<< "${RELEASE_ASSETS}"
 
           AMD64_FILE="$(find artifacts/nginx-amd64 \
             -maxdepth 1 \
@@ -242,22 +326,22 @@ jobs:
             -print -quit)"
 
           if [ -z "${AMD64_FILE}" ]; then
-            echo "未找到 amd64 tar.gz 文件"
+            echo "错误：未找到 amd64 tar.gz"
             exit 1
           fi
 
           if [ -z "${ARM64_FILE}" ]; then
-            echo "未找到 arm64 tar.gz 文件"
+            echo "错误：未找到 arm64 tar.gz"
             exit 1
           fi
 
           if [ -z "${AMD64_SHA_FILE}" ]; then
-            echo "未找到 amd64 sha256 文件"
+            echo "错误：未找到 amd64 sha256"
             exit 1
           fi
 
           if [ -z "${ARM64_SHA_FILE}" ]; then
-            echo "未找到 arm64 sha256 文件"
+            echo "错误：未找到 arm64 sha256"
             exit 1
           fi
 
@@ -267,18 +351,74 @@ jobs:
           AMD64_SHA256="$(awk 'NR == 1 {print $1}' "${AMD64_SHA_FILE}")"
           ARM64_SHA256="$(awk 'NR == 1 {print $1}' "${ARM64_SHA_FILE}")"
 
-          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          # 直接从 action-gh-release 返回的附件列表获取真实下载地址
+          AMD64_URL="$(jq -r \
+            --arg filename "${AMD64_NAME}" \
+            '.[] |
+             select(.name == $filename) |
+             .browser_download_url' \
+            <<< "${RELEASE_ASSETS}" \
+            | head -n 1)"
 
-          AMD64_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${AMD64_NAME}"
+          ARM64_URL="$(jq -r \
+            --arg filename "${ARM64_NAME}" \
+            '.[] |
+             select(.name == $filename) |
+             .browser_download_url' \
+            <<< "${RELEASE_ASSETS}" \
+            | head -n 1)"
 
-          ARM64_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ARM64_NAME}"
+          if [ -z "${AMD64_URL}" ] || [ "${AMD64_URL}" = "null" ]; then
+            echo "错误：Release 中未找到附件 ${AMD64_NAME}"
+            exit 1
+          fi
 
-          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ -z "${ARM64_URL}" ] || [ "${ARM64_URL}" = "null" ]; then
+            echo "错误：Release 中未找到附件 ${ARM64_NAME}"
+            exit 1
+          fi
+
+          echo "amd64 文件：${AMD64_NAME}"
+          echo "amd64 地址：${AMD64_URL}"
+          echo "arm64 文件：${ARM64_NAME}"
+          echo "arm64 地址：${ARM64_URL}"
+
+          # 验证下载地址，自动跟随 GitHub 重定向
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --retry 3 \
+            --connect-timeout 15 \
+            --max-time 60 \
+            --range 0-0 \
+            --output /dev/null \
+            "${AMD64_URL}"
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --retry 3 \
+            --connect-timeout 15 \
+            --max-time 60 \
+            --range 0-0 \
+            --output /dev/null \
+            "${ARM64_URL}"
 
           ATTACHMENT_URLS="$(jq -cn \
             --arg amd64 "${AMD64_URL}" \
             --arg arm64 "${ARM64_URL}" \
             '[$amd64, $arm64]')"
+
+          if [ "$(jq 'length' <<< "${ATTACHMENT_URLS}")" -ne 2 ]; then
+            echo "错误：附件地址数量不是 2"
+            exit 1
+          fi
+
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           jq -n \
             --arg repository "${GITHUB_REPOSITORY}" \
@@ -313,7 +453,7 @@ jobs:
               build_status: "success"
             }' > hap-payload.json
 
-          echo "准备发送给 HAP 的数据："
+          echo "发送给 HAP 的数据："
           jq . hap-payload.json
 
       - name: Send release information to HAP
@@ -322,22 +462,34 @@ jobs:
           set -euo pipefail
 
           if [ -z "${HAP_WEBHOOK_URL}" ]; then
-            echo "未配置 GitHub Secret：HAP_WEBHOOK_URL"
+            echo "错误：未配置 HAP_WEBHOOK_URL"
             exit 1
           fi
 
-          curl \
-            --fail-with-body \
+          RESPONSE_FILE="$(mktemp)"
+
+          HTTP_CODE="$(curl \
             --silent \
             --show-error \
             --retry 3 \
             --retry-all-errors \
             --connect-timeout 15 \
-            --max-time 120 \
+            --max-time 180 \
+            --output "${RESPONSE_FILE}" \
+            --write-out '%{http_code}' \
             -X POST \
             -H "Content-Type: application/json" \
             --data-binary @hap-payload.json \
-            "${HAP_WEBHOOK_URL}"
+            "${HAP_WEBHOOK_URL}")"
 
+          echo "HAP HTTP 状态码：${HTTP_CODE}"
+          echo "HAP 响应："
+          cat "${RESPONSE_FILE}"
           echo
+
+          if [ "${HTTP_CODE}" -lt 200 ] || [ "${HTTP_CODE}" -ge 300 ]; then
+            echo "错误：HAP Webhook 调用失败"
+            exit 1
+          fi
+
           echo "HAP Webhook 调用成功"
