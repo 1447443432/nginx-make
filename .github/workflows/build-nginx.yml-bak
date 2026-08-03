@@ -1,0 +1,160 @@
+name: Build nginx
+
+on:
+  workflow_dispatch:
+    inputs:
+      nginx_version:
+        description: "nginx version (optional, default from config/nginx-version.conf)"
+        required: false
+  push:
+    branches:
+      - master
+    paths:
+      - 'Dockerfile'
+      - 'build-nginx.sh'
+      - 'build.sh'
+      - 'config/**'
+      - 'docker/**'
+      - 'modules/**'
+      - 'nginx/**'
+
+permissions:
+  contents: write
+
+env:
+  ARTIFACT_RETENTION_DAYS: 7
+
+jobs:
+  build-amd64:
+    name: Build nginx amd64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build nginx
+        run: |
+          chmod +x build-nginx.sh
+          chmod +x build.sh
+
+          if [ -n "${{ github.event.inputs.nginx_version }}" ]; then
+            ./build-nginx.sh amd64 "${{ github.event.inputs.nginx_version }}"
+          else
+            ./build-nginx.sh amd64
+          fi
+
+      - name: Verify sha256
+        run: |
+          cd output
+          sha256sum -c *.sha256
+
+      - name: Show output
+        run: |
+          ls -lh output
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-amd64
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          path: |
+            output/*.tar.gz
+            output/*.sha256
+            output/build-info.txt
+
+  build-arm64:
+    name: Build nginx arm64
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build nginx
+        run: |
+          chmod +x build-nginx.sh
+          chmod +x build.sh
+
+          if [ -n "${{ github.event.inputs.nginx_version }}" ]; then
+            ./build-nginx.sh arm64 "${{ github.event.inputs.nginx_version }}"
+          else
+            ./build-nginx.sh arm64
+          fi
+
+      - name: Verify sha256
+        run: |
+          cd output
+          sha256sum -c *.sha256
+
+      - name: Show output
+        run: |
+          ls -lh output
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-arm64
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          path: |
+            output/*.tar.gz
+            output/*.sha256
+            output/build-info.txt
+
+  release:
+    name: Create Release
+    needs:
+      - build-amd64
+      - build-arm64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read nginx version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.nginx_version }}" ]; then
+            echo "version=${{ github.event.inputs.nginx_version }}" >> $GITHUB_OUTPUT
+          else
+            source config/nginx-version.conf
+            echo "version=${NGINX_VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Merge files
+        run: |
+            rm -rf release
+            mkdir -p release
+
+            find artifacts \
+            -type f \
+            \( \
+                -name "*.tar.gz" \
+                -o -name "*.sha256" \
+            \) \
+            -exec cp {} release/ \;
+
+            cp artifacts/nginx-amd64/build-info.txt \
+            release/build-info-amd64.txt
+
+            cp artifacts/nginx-arm64/build-info.txt \
+            release/build-info-arm64.txt
+
+            ls -lh release
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nginx-${{ steps.version.outputs.version }}
+          name: nginx-${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: |
+            release/*

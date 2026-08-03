@@ -34,7 +34,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build nginx
+        shell: bash
         run: |
+          set -euo pipefail
+
           chmod +x build-nginx.sh
           chmod +x build.sh
 
@@ -45,11 +48,14 @@ jobs:
           fi
 
       - name: Verify sha256
+        shell: bash
         run: |
+          set -euo pipefail
           cd output
           sha256sum -c *.sha256
 
       - name: Show output
+        shell: bash
         run: |
           ls -lh output
 
@@ -72,7 +78,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build nginx
+        shell: bash
         run: |
+          set -euo pipefail
+
           chmod +x build-nginx.sh
           chmod +x build.sh
 
@@ -83,11 +92,14 @@ jobs:
           fi
 
       - name: Verify sha256
+        shell: bash
         run: |
+          set -euo pipefail
           cd output
           sha256sum -c *.sha256
 
       - name: Show output
+        shell: bash
         run: |
           ls -lh output
 
@@ -108,19 +120,37 @@ jobs:
       - build-arm64
     runs-on: ubuntu-latest
 
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.tag.outputs.tag }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Read nginx version
         id: version
+        shell: bash
         run: |
+          set -euo pipefail
+
           if [ -n "${{ github.event.inputs.nginx_version }}" ]; then
-            echo "version=${{ github.event.inputs.nginx_version }}" >> $GITHUB_OUTPUT
+            VERSION="${{ github.event.inputs.nginx_version }}"
           else
             source config/nginx-version.conf
-            echo "version=${NGINX_VERSION}" >> $GITHUB_OUTPUT
+            VERSION="${NGINX_VERSION}"
           fi
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RELEASE_TAG="nginx-${{ steps.version.outputs.version }}"
+          echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
 
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -128,33 +158,186 @@ jobs:
           path: artifacts
 
       - name: Merge files
+        shell: bash
         run: |
-            rm -rf release
-            mkdir -p release
+          set -euo pipefail
 
-            find artifacts \
+          rm -rf release
+          mkdir -p release
+
+          find artifacts \
             -type f \
             \( \
-                -name "*.tar.gz" \
-                -o -name "*.sha256" \
+              -name "*.tar.gz" \
+              -o -name "*.sha256" \
             \) \
             -exec cp {} release/ \;
 
-            cp artifacts/nginx-amd64/build-info.txt \
+          cp artifacts/nginx-amd64/build-info.txt \
             release/build-info-amd64.txt
 
-            cp artifacts/nginx-arm64/build-info.txt \
+          cp artifacts/nginx-arm64/build-info.txt \
             release/build-info-arm64.txt
 
-            ls -lh release
+          ls -lh release
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nginx-${{ steps.version.outputs.version }}
-          name: nginx-${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           overwrite_files: true
           fail_on_unmatched_files: true
           files: |
             release/*
+
+  sync-hap:
+    name: Sync Release to HAP
+    needs:
+      - release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+      RELEASE_TAG: ${{ needs.release.outputs.tag }}
+      HAP_WEBHOOK_URL: ${{ secrets.HAP_WEBHOOK_URL }}
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare HAP payload
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          AMD64_FILE="$(find artifacts/nginx-amd64 \
+            -maxdepth 1 \
+            -type f \
+            -name "*.tar.gz" \
+            -print -quit)"
+
+          ARM64_FILE="$(find artifacts/nginx-arm64 \
+            -maxdepth 1 \
+            -type f \
+            -name "*.tar.gz" \
+            -print -quit)"
+
+          AMD64_SHA_FILE="$(find artifacts/nginx-amd64 \
+            -maxdepth 1 \
+            -type f \
+            -name "*.sha256" \
+            -print -quit)"
+
+          ARM64_SHA_FILE="$(find artifacts/nginx-arm64 \
+            -maxdepth 1 \
+            -type f \
+            -name "*.sha256" \
+            -print -quit)"
+
+          if [ -z "${AMD64_FILE}" ]; then
+            echo "未找到 amd64 tar.gz 文件"
+            exit 1
+          fi
+
+          if [ -z "${ARM64_FILE}" ]; then
+            echo "未找到 arm64 tar.gz 文件"
+            exit 1
+          fi
+
+          if [ -z "${AMD64_SHA_FILE}" ]; then
+            echo "未找到 amd64 sha256 文件"
+            exit 1
+          fi
+
+          if [ -z "${ARM64_SHA_FILE}" ]; then
+            echo "未找到 arm64 sha256 文件"
+            exit 1
+          fi
+
+          AMD64_NAME="$(basename "${AMD64_FILE}")"
+          ARM64_NAME="$(basename "${ARM64_FILE}")"
+
+          AMD64_SHA256="$(awk 'NR == 1 {print $1}' "${AMD64_SHA_FILE}")"
+          ARM64_SHA256="$(awk 'NR == 1 {print $1}' "${ARM64_SHA_FILE}")"
+
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+
+          AMD64_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${AMD64_NAME}"
+
+          ARM64_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ARM64_NAME}"
+
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          ATTACHMENT_URLS="$(jq -cn \
+            --arg amd64 "${AMD64_URL}" \
+            --arg arm64 "${ARM64_URL}" \
+            '[$amd64, $arm64]')"
+
+          jq -n \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg version "${VERSION}" \
+            --arg tag "${RELEASE_TAG}" \
+            --arg release_url "${RELEASE_URL}" \
+            --arg amd64_name "${AMD64_NAME}" \
+            --arg amd64_url "${AMD64_URL}" \
+            --arg amd64_sha256 "${AMD64_SHA256}" \
+            --arg arm64_name "${ARM64_NAME}" \
+            --arg arm64_url "${ARM64_URL}" \
+            --arg arm64_sha256 "${ARM64_SHA256}" \
+            --arg attachment_urls "${ATTACHMENT_URLS}" \
+            --arg commit_sha "${GITHUB_SHA}" \
+            --arg run_id "${GITHUB_RUN_ID}" \
+            --arg run_url "${RUN_URL}" \
+            '{
+              repository: $repository,
+              version: $version,
+              tag: $tag,
+              release_url: $release_url,
+              amd64_name: $amd64_name,
+              amd64_url: $amd64_url,
+              amd64_sha256: $amd64_sha256,
+              arm64_name: $arm64_name,
+              arm64_url: $arm64_url,
+              arm64_sha256: $arm64_sha256,
+              attachment_urls: $attachment_urls,
+              commit_sha: $commit_sha,
+              run_id: $run_id,
+              run_url: $run_url,
+              build_status: "success"
+            }' > hap-payload.json
+
+          echo "准备发送给 HAP 的数据："
+          jq . hap-payload.json
+
+      - name: Send release information to HAP
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HAP_WEBHOOK_URL}" ]; then
+            echo "未配置 GitHub Secret：HAP_WEBHOOK_URL"
+            exit 1
+          fi
+
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --connect-timeout 15 \
+            --max-time 120 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data-binary @hap-payload.json \
+            "${HAP_WEBHOOK_URL}"
+
+          echo
+          echo "HAP Webhook 调用成功"
