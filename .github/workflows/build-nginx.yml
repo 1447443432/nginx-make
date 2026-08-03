@@ -260,12 +260,21 @@ jobs:
       HAP_WEBHOOK_URL: ${{ secrets.HAP_WEBHOOK_URL }}
 
     steps:
+      - name: Skip HAP sync
+        if: ${{ env.HAP_WEBHOOK_URL == '' }}
+        shell: bash
+        run: |
+          echo "未配置仓库 Secret：HAP_WEBHOOK_URL"
+          echo "跳过 HAP 同步，不影响构建和 GitHub Release"
+
       - name: Download artifacts
+        if: ${{ env.HAP_WEBHOOK_URL != '' }}
         uses: actions/download-artifact@v7
         with:
           path: artifacts
 
       - name: Prepare HAP payload
+        if: ${{ env.HAP_WEBHOOK_URL != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -295,53 +304,75 @@ jobs:
             exit 1
           fi
 
+          if ! jq -e 'type == "array"' <<< "${RELEASE_ASSETS}" >/dev/null; then
+            echo "错误：RELEASE_ASSETS 不是合法的 JSON 数组"
+            printf '%s\n' "${RELEASE_ASSETS}"
+            exit 1
+          fi
+
           echo "Release 附件列表："
           jq -r '
             .[] |
             "\(.name) -> \(.browser_download_url)"
           ' <<< "${RELEASE_ASSETS}"
 
-          AMD64_FILE="$(find artifacts/nginx-amd64 \
-            -maxdepth 1 \
-            -type f \
-            -name "*.tar.gz" \
-            -print -quit)"
+          AMD64_FILE="$(
+            find artifacts/nginx-amd64 \
+              -maxdepth 1 \
+              -type f \
+              -name "*-amd64.tar.gz" \
+              -print \
+            | head -n 1
+          )"
 
-          ARM64_FILE="$(find artifacts/nginx-arm64 \
-            -maxdepth 1 \
-            -type f \
-            -name "*.tar.gz" \
-            -print -quit)"
+          ARM64_FILE="$(
+            find artifacts/nginx-arm64 \
+              -maxdepth 1 \
+              -type f \
+              -name "*-arm64.tar.gz" \
+              -print \
+            | head -n 1
+          )"
 
-          AMD64_SHA_FILE="$(find artifacts/nginx-amd64 \
-            -maxdepth 1 \
-            -type f \
-            -name "*.sha256" \
-            -print -quit)"
+          AMD64_SHA_FILE="$(
+            find artifacts/nginx-amd64 \
+              -maxdepth 1 \
+              -type f \
+              -name "*-amd64.tar.gz.sha256" \
+              -print \
+            | head -n 1
+          )"
 
-          ARM64_SHA_FILE="$(find artifacts/nginx-arm64 \
-            -maxdepth 1 \
-            -type f \
-            -name "*.sha256" \
-            -print -quit)"
+          ARM64_SHA_FILE="$(
+            find artifacts/nginx-arm64 \
+              -maxdepth 1 \
+              -type f \
+              -name "*-arm64.tar.gz.sha256" \
+              -print \
+            | head -n 1
+          )"
 
           if [ -z "${AMD64_FILE}" ]; then
             echo "错误：未找到 amd64 tar.gz"
+            find artifacts/nginx-amd64 -maxdepth 1 -type f -print || true
             exit 1
           fi
 
           if [ -z "${ARM64_FILE}" ]; then
             echo "错误：未找到 arm64 tar.gz"
+            find artifacts/nginx-arm64 -maxdepth 1 -type f -print || true
             exit 1
           fi
 
           if [ -z "${AMD64_SHA_FILE}" ]; then
             echo "错误：未找到 amd64 sha256"
+            find artifacts/nginx-amd64 -maxdepth 1 -type f -print || true
             exit 1
           fi
 
           if [ -z "${ARM64_SHA_FILE}" ]; then
             echo "错误：未找到 arm64 sha256"
+            find artifacts/nginx-arm64 -maxdepth 1 -type f -print || true
             exit 1
           fi
 
@@ -351,47 +382,74 @@ jobs:
           AMD64_SHA256="$(awk 'NR == 1 {print $1}' "${AMD64_SHA_FILE}")"
           ARM64_SHA256="$(awk 'NR == 1 {print $1}' "${ARM64_SHA_FILE}")"
 
-          # 直接从 action-gh-release 返回的附件列表获取真实下载地址
-          AMD64_URL="$(jq -r \
-            --arg filename "${AMD64_NAME}" \
-            '.[] |
-             select(.name == $filename) |
-             .browser_download_url' \
-            <<< "${RELEASE_ASSETS}" \
-            | head -n 1)"
+          if ! [[ "${AMD64_SHA256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "错误：amd64 SHA256 格式不正确：${AMD64_SHA256}"
+            exit 1
+          fi
 
-          ARM64_URL="$(jq -r \
-            --arg filename "${ARM64_NAME}" \
-            '.[] |
-             select(.name == $filename) |
-             .browser_download_url' \
-            <<< "${RELEASE_ASSETS}" \
-            | head -n 1)"
+          if ! [[ "${ARM64_SHA256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "错误：arm64 SHA256 格式不正确：${ARM64_SHA256}"
+            exit 1
+          fi
+
+          # 从 action-gh-release 返回的附件列表中获取真实下载地址
+          AMD64_URL="$(
+            jq -r \
+              --arg filename "${AMD64_NAME}" \
+              '
+                .[]
+                | select(.name == $filename)
+                | .browser_download_url
+              ' \
+              <<< "${RELEASE_ASSETS}" \
+            | head -n 1
+          )"
+
+          ARM64_URL="$(
+            jq -r \
+              --arg filename "${ARM64_NAME}" \
+              '
+                .[]
+                | select(.name == $filename)
+                | .browser_download_url
+              ' \
+              <<< "${RELEASE_ASSETS}" \
+            | head -n 1
+          )"
 
           if [ -z "${AMD64_URL}" ] || [ "${AMD64_URL}" = "null" ]; then
             echo "错误：Release 中未找到附件 ${AMD64_NAME}"
+            echo "当前 Release 附件："
+            jq -r '.[].name' <<< "${RELEASE_ASSETS}"
             exit 1
           fi
 
           if [ -z "${ARM64_URL}" ] || [ "${ARM64_URL}" = "null" ]; then
             echo "错误：Release 中未找到附件 ${ARM64_NAME}"
+            echo "当前 Release 附件："
+            jq -r '.[].name' <<< "${RELEASE_ASSETS}"
             exit 1
           fi
 
           echo "amd64 文件：${AMD64_NAME}"
           echo "amd64 地址：${AMD64_URL}"
+          echo "amd64 SHA256：${AMD64_SHA256}"
+
           echo "arm64 文件：${ARM64_NAME}"
           echo "arm64 地址：${ARM64_URL}"
+          echo "arm64 SHA256：${ARM64_SHA256}"
 
-          # 验证下载地址，自动跟随 GitHub 重定向
+          echo "检查 GitHub Release 附件下载地址"
+
           curl \
             --fail \
             --silent \
             --show-error \
             --location \
             --retry 3 \
+            --retry-all-errors \
             --connect-timeout 15 \
-            --max-time 60 \
+            --max-time 120 \
             --range 0-0 \
             --output /dev/null \
             "${AMD64_URL}"
@@ -402,24 +460,32 @@ jobs:
             --show-error \
             --location \
             --retry 3 \
+            --retry-all-errors \
             --connect-timeout 15 \
-            --max-time 60 \
+            --max-time 120 \
             --range 0-0 \
             --output /dev/null \
             "${ARM64_URL}"
 
-          ATTACHMENT_URLS="$(jq -cn \
-            --arg amd64 "${AMD64_URL}" \
-            --arg arm64 "${ARM64_URL}" \
-            '[$amd64, $arm64]')"
+          # 明道云附件字段要求接收文本：
+          # ["url1","url2"]
+          ATTACHMENT_URLS="$(
+            jq -cn \
+              --arg amd64 "${AMD64_URL}" \
+              --arg arm64 "${ARM64_URL}" \
+              '[$amd64, $arm64]'
+          )"
 
           if [ "$(jq 'length' <<< "${ATTACHMENT_URLS}")" -ne 2 ]; then
             echo "错误：附件地址数量不是 2"
+            printf '%s\n' "${ATTACHMENT_URLS}"
             exit 1
           fi
 
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
+          # attachment_urls 使用 --arg，确保它是字符串，
+          # 而不是直接发送 JSON 数组。
           jq -n \
             --arg repository "${GITHUB_REPOSITORY}" \
             --arg version "${VERSION}" \
@@ -453,39 +519,67 @@ jobs:
               build_status: "success"
             }' > hap-payload.json
 
+          # 校验 attachment_urls：
+          # 外层必须是字符串，字符串内部必须是两个 URL 组成的数组。
+          if ! jq -e '
+            (.attachment_urls | type) == "string"
+            and
+            ((.attachment_urls | fromjson | type) == "array")
+            and
+            ((.attachment_urls | fromjson | length) == 2)
+          ' hap-payload.json >/dev/null; then
+            echo "错误：attachment_urls 格式不正确"
+            jq . hap-payload.json
+            exit 1
+          fi
+
           echo "发送给 HAP 的数据："
           jq . hap-payload.json
 
+          echo "attachment_urls 实际文本："
+          jq -r '.attachment_urls' hap-payload.json
+
       - name: Send release information to HAP
+        if: ${{ env.HAP_WEBHOOK_URL != '' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "${HAP_WEBHOOK_URL}" ]; then
-            echo "错误：未配置 HAP_WEBHOOK_URL"
-            exit 1
-          fi
-
           RESPONSE_FILE="$(mktemp)"
 
-          HTTP_CODE="$(curl \
-            --silent \
-            --show-error \
-            --retry 3 \
-            --retry-all-errors \
-            --connect-timeout 15 \
-            --max-time 180 \
-            --output "${RESPONSE_FILE}" \
-            --write-out '%{http_code}' \
-            -X POST \
-            -H "Content-Type: application/json" \
-            --data-binary @hap-payload.json \
-            "${HAP_WEBHOOK_URL}")"
+          cleanup()
+          {
+            rm -f "${RESPONSE_FILE}"
+          }
+
+          trap cleanup EXIT
+
+          HTTP_CODE="$(
+            curl \
+              --silent \
+              --show-error \
+              --location \
+              --retry 3 \
+              --retry-all-errors \
+              --connect-timeout 15 \
+              --max-time 180 \
+              --output "${RESPONSE_FILE}" \
+              --write-out "%{http_code}" \
+              -X POST \
+              -H "Content-Type: application/json; charset=utf-8" \
+              --data-binary @hap-payload.json \
+              "${HAP_WEBHOOK_URL}"
+          )"
 
           echo "HAP HTTP 状态码：${HTTP_CODE}"
-          echo "HAP 响应："
+          echo "HAP 响应内容："
           cat "${RESPONSE_FILE}"
           echo
+
+          if ! [[ "${HTTP_CODE}" =~ ^[0-9]{3}$ ]]; then
+            echo "错误：无法识别 HAP HTTP 状态码：${HTTP_CODE}"
+            exit 1
+          fi
 
           if [ "${HTTP_CODE}" -lt 200 ] || [ "${HTTP_CODE}" -ge 300 ]; then
             echo "错误：HAP Webhook 调用失败"
