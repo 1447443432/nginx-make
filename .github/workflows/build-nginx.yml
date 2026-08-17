@@ -53,12 +53,32 @@ jobs:
           RELEASE_TAG="nginx-${VERSION}"
           echo "nginx_version=${VERSION}" >>"${GITHUB_OUTPUT}"
           echo "release_tag=${RELEASE_TAG}" >>"${GITHUB_OUTPUT}"
+          read_build_var()
+          {
+            local key="$1"
+            sed -n "s/^${key}=\"\\([^\"]*\\)\"$/\\1/p" build.sh | head -n 1
+          }
+          SUB_FILTER_VERSION="$(read_build_var SUB_FILTER_VERSION)"
+          PROXY_CONNECT_VERSION="$(read_build_var PROXY_CONNECT_VERSION)"
+          UPSTREAM_CHECK_VERSION="$(read_build_var UPSTREAM_CHECK_VERSION)"
+          OPENSSL_VERSION="$(read_build_var OPENSSL_VERSION)"
+          PCRE_VERSION="$(read_build_var PCRE_VERSION)"
+          ZLIB_VERSION="$(read_build_var ZLIB_VERSION)"
           {
             echo "## nginx build configuration"
             echo
             echo "- Version: \`${VERSION}\`"
             echo "- Architectures: \`amd64\`, \`arm64\`"
             echo "- Release tag: \`${RELEASE_TAG}\`"
+            echo "- Custom modules:"
+            echo "  - ngx_http_substitutions_filter_module: \`${SUB_FILTER_VERSION}\`"
+            echo "  - ngx_http_proxy_connect_module: \`${PROXY_CONNECT_VERSION}\`"
+            echo "  - nginx_upstream_check_module: \`${UPSTREAM_CHECK_VERSION}\`"
+            echo "- Build dependencies:"
+            echo "  - OpenSSL: \`${OPENSSL_VERSION}\`"
+            echo "  - PCRE: \`${PCRE_VERSION}\`"
+            echo "  - zlib: \`${ZLIB_VERSION}\`"
+            echo "- Built-in modules: \`http_sub\`, \`http_ssl\`, \`http_v2\`, \`http_realip\`, \`http_gzip_static\`, \`http_stub_status\`, \`http_slice\`, \`http_auth_request\`, \`http_secure_link\`, \`stream\`, \`stream_ssl\`, \`threads\`"
           } >>"${GITHUB_STEP_SUMMARY}"
 
   build-amd64:
