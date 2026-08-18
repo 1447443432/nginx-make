@@ -227,7 +227,7 @@ jobs:
             echo
             echo "| Asset | Download URL |"
             echo "|---|---|"
-            jq -r '.[] | "| \\(.name) | \\(.browser_download_url) |"' <<<"${RELEASE_ASSETS}"
+            jq -r '.[] | "| \(.name) | \(.browser_download_url) |"' <<<"${RELEASE_ASSETS}"
           } >>"${GITHUB_STEP_SUMMARY}"
 
   sync-hap:
