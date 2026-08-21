@@ -52,6 +52,21 @@ SUB_FILTER_VERSION="0.6.4"
 PROXY_CONNECT_VERSION="0.0.7"
 UPSTREAM_CHECK_VERSION="0.4.0"
 
+ENABLE_SUB_FILTER=${ENABLE_SUB_FILTER:-true}
+ENABLE_PROXY_CONNECT=${ENABLE_PROXY_CONNECT:-true}
+ENABLE_UPSTREAM_CHECK=${ENABLE_UPSTREAM_CHECK:-true}
+
+for module_switch in "${ENABLE_SUB_FILTER}" "${ENABLE_PROXY_CONNECT}" "${ENABLE_UPSTREAM_CHECK}"; do
+    case "${module_switch}" in
+        true|false)
+            ;;
+        *)
+            echo "invalid module switch: ${module_switch}" >&2
+            exit 1
+            ;;
+    esac
+done
+
 # -Wno-error
 NGINX_CC_OPT=""
 
@@ -271,6 +286,11 @@ select_patch()
 {
     local version
 
+    if [ "${ENABLE_PROXY_CONNECT}" != "true" ]; then
+        PROXY_PATCH=""
+        return
+    fi
+
     version=$(echo "${NGINX_VERSION}" | awk -F. '{print $1"."$2}')
 
     case "${version}" in
@@ -291,6 +311,22 @@ select_patch()
 
 extract_source()
 {
+    local modules=(
+        "openssl-${OPENSSL_VERSION}.tar.gz"
+        "pcre-${PCRE_VERSION}.tar.gz"
+        "zlib-${ZLIB_VERSION}.tar.gz"
+    )
+
+    if [ "${ENABLE_SUB_FILTER}" = "true" ]; then
+        modules+=("ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz")
+    fi
+    if [ "${ENABLE_PROXY_CONNECT}" = "true" ]; then
+        modules+=("ngx_http_proxy_connect_module-${PROXY_CONNECT_VERSION}.tar.gz")
+    fi
+    if [ "${ENABLE_UPSTREAM_CHECK}" = "true" ]; then
+        modules+=("nginx_upstream_check_module-${UPSTREAM_CHECK_VERSION}.tar.gz")
+    fi
+
     if [ ! -d "${NGINX_DIR}" ]; then
         tar zxf \
         "${NGINX_TAR}" \
@@ -300,13 +336,7 @@ extract_source()
     rm -rf nginx-modules
     mkdir nginx-modules
 
-    for module in \
-        openssl-${OPENSSL_VERSION}.tar.gz \
-        pcre-${PCRE_VERSION}.tar.gz \
-        zlib-${ZLIB_VERSION}.tar.gz \
-        ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}.tar.gz \
-        ngx_http_proxy_connect_module-${PROXY_CONNECT_VERSION}.tar.gz \
-        nginx_upstream_check_module-${UPSTREAM_CHECK_VERSION}.tar.gz
+    for module in "${modules[@]}"
     do
         tar zxf \
         modules/${module} \
@@ -318,11 +348,15 @@ apply_patch()
 {
     cd "${NGINX_DIR}"
 
-    patch -p1 \
-    < "${BASE_DIR}/${PROXY_PATCH}"
+    if [ "${ENABLE_PROXY_CONNECT}" = "true" ]; then
+        patch -p1 \
+        < "${BASE_DIR}/${PROXY_PATCH}"
+    fi
 
-    patch -p1 \
-    < "${BASE_DIR}/nginx-modules/nginx_upstream_check_module-${UPSTREAM_CHECK_VERSION}/check_1.20.1+.patch"
+    if [ "${ENABLE_UPSTREAM_CHECK}" = "true" ]; then
+        patch -p1 \
+        < "${BASE_DIR}/nginx-modules/nginx_upstream_check_module-${UPSTREAM_CHECK_VERSION}/check_1.20.1+.patch"
+    fi
 }
 
 configure_nginx()
@@ -335,28 +369,41 @@ configure_nginx()
         cc_opt="--with-cc-opt=${NGINX_CC_OPT}"
     fi
 
-    ./configure \
-    --prefix=/usr/local/nginx \
-    ${cc_opt} \
-    --add-module=../../nginx-modules/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION} \
-    --add-module=../../nginx-modules/ngx_http_proxy_connect_module-${PROXY_CONNECT_VERSION} \
-    --add-module=../../nginx-modules/nginx_upstream_check_module-${UPSTREAM_CHECK_VERSION} \
-    --with-openssl=../../nginx-modules/openssl-${OPENSSL_VERSION} \
-    --with-openssl-opt=no-shared \
-    --with-pcre=../../nginx-modules/pcre-${PCRE_VERSION} \
-    --with-zlib=../../nginx-modules/zlib-${ZLIB_VERSION} \
-    --with-http_sub_module \
-    --with-http_ssl_module \
-    --with-http_v2_module \
-    --with-http_realip_module \
-    --with-http_gzip_static_module \
-    --with-http_stub_status_module \
-    --with-http_slice_module \
-    --with-http_auth_request_module \
-    --with-http_secure_link_module \
-    --with-stream \
-    --with-stream_ssl_module \
-    --with-threads
+    local configure_args=(
+        "--prefix=/usr/local/nginx"
+        "--with-openssl=../../nginx-modules/openssl-${OPENSSL_VERSION}"
+        "--with-openssl-opt=no-shared"
+        "--with-pcre=../../nginx-modules/pcre-${PCRE_VERSION}"
+        "--with-zlib=../../nginx-modules/zlib-${ZLIB_VERSION}"
+        "--with-http_sub_module"
+        "--with-http_ssl_module"
+        "--with-http_v2_module"
+        "--with-http_realip_module"
+        "--with-http_gzip_static_module"
+        "--with-http_stub_status_module"
+        "--with-http_slice_module"
+        "--with-http_auth_request_module"
+        "--with-http_secure_link_module"
+        "--with-stream"
+        "--with-stream_ssl_module"
+        "--with-threads"
+    )
+
+    if [ -n "${cc_opt}" ]; then
+        configure_args+=("${cc_opt}")
+    fi
+
+    if [ "${ENABLE_SUB_FILTER}" = "true" ]; then
+        configure_args+=("--add-module=../../nginx-modules/ngx_http_substitutions_filter_module-${SUB_FILTER_VERSION}")
+    fi
+    if [ "${ENABLE_PROXY_CONNECT}" = "true" ]; then
+        configure_args+=("--add-module=../../nginx-modules/ngx_http_proxy_connect_module-${PROXY_CONNECT_VERSION}")
+    fi
+    if [ "${ENABLE_UPSTREAM_CHECK}" = "true" ]; then
+        configure_args+=("--add-module=../../nginx-modules/nginx_upstream_check_module-${UPSTREAM_CHECK_VERSION}")
+    fi
+
+    ./configure "${configure_args[@]}"
 }
 
 compile_nginx()
@@ -414,7 +461,11 @@ nginx_version=${NGINX_VERSION}
 openssl_version=${OPENSSL_VERSION}
 pcre_version=${PCRE_VERSION}
 zlib_version=${ZLIB_VERSION}
+sub_filter_enabled=${ENABLE_SUB_FILTER}
+sub_filter_version=${SUB_FILTER_VERSION}
+proxy_connect_enabled=${ENABLE_PROXY_CONNECT}
 proxy_connect_version=${PROXY_CONNECT_VERSION}
+upstream_check_enabled=${ENABLE_UPSTREAM_CHECK}
 upstream_check_version=${UPSTREAM_CHECK_VERSION}
 arch=${BUILD_ARCH}
 glibc=${glibc}

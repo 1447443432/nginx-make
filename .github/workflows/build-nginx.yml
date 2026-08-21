@@ -7,6 +7,21 @@ on:
         description: "nginx version; empty uses config/nginx-version.conf"
         required: false
         type: string
+      enable_sub_filter:
+        description: "Build ngx_http_substitutions_filter_module"
+        required: true
+        default: true
+        type: boolean
+      enable_proxy_connect:
+        description: "Build ngx_http_proxy_connect_module"
+        required: true
+        default: true
+        type: boolean
+      enable_upstream_check:
+        description: "Build nginx_upstream_check_module"
+        required: true
+        default: true
+        type: boolean
   push:
     branches:
       - master
@@ -33,6 +48,9 @@ jobs:
     outputs:
       nginx_version: ${{ steps.resolve.outputs.nginx_version }}
       release_tag: ${{ steps.resolve.outputs.release_tag }}
+      enable_sub_filter: ${{ steps.resolve.outputs.enable_sub_filter }}
+      enable_proxy_connect: ${{ steps.resolve.outputs.enable_proxy_connect }}
+      enable_upstream_check: ${{ steps.resolve.outputs.enable_upstream_check }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -42,6 +60,9 @@ jobs:
         shell: bash
         env:
           INPUT_VERSION: ${{ inputs.nginx_version }}
+          INPUT_ENABLE_SUB_FILTER: ${{ inputs.enable_sub_filter }}
+          INPUT_ENABLE_PROXY_CONNECT: ${{ inputs.enable_proxy_connect }}
+          INPUT_ENABLE_UPSTREAM_CHECK: ${{ inputs.enable_upstream_check }}
         run: |
           set -euo pipefail
           source config/nginx-version.conf
@@ -50,9 +71,21 @@ jobs:
             echo "invalid nginx version: ${VERSION}" >&2
             exit 1
           fi
+          ENABLE_SUB_FILTER="${INPUT_ENABLE_SUB_FILTER:-true}"
+          ENABLE_PROXY_CONNECT="${INPUT_ENABLE_PROXY_CONNECT:-true}"
+          ENABLE_UPSTREAM_CHECK="${INPUT_ENABLE_UPSTREAM_CHECK:-true}"
+          for value in "${ENABLE_SUB_FILTER}" "${ENABLE_PROXY_CONNECT}" "${ENABLE_UPSTREAM_CHECK}"; do
+            if [[ "${value}" != "true" && "${value}" != "false" ]]; then
+              echo "invalid module switch: ${value}" >&2
+              exit 1
+            fi
+          done
           RELEASE_TAG="nginx-${VERSION}"
           echo "nginx_version=${VERSION}" >>"${GITHUB_OUTPUT}"
           echo "release_tag=${RELEASE_TAG}" >>"${GITHUB_OUTPUT}"
+          echo "enable_sub_filter=${ENABLE_SUB_FILTER}" >>"${GITHUB_OUTPUT}"
+          echo "enable_proxy_connect=${ENABLE_PROXY_CONNECT}" >>"${GITHUB_OUTPUT}"
+          echo "enable_upstream_check=${ENABLE_UPSTREAM_CHECK}" >>"${GITHUB_OUTPUT}"
           read_build_var()
           {
             local key="$1"
@@ -70,6 +103,9 @@ jobs:
             echo "- Version: \`${VERSION}\`"
             echo "- Architectures: \`amd64\`, \`arm64\`"
             echo "- Release tag: \`${RELEASE_TAG}\`"
+            echo "- substitutions filter: \`${ENABLE_SUB_FILTER}\`"
+            echo "- proxy connect: \`${ENABLE_PROXY_CONNECT}\`"
+            echo "- upstream check: \`${ENABLE_UPSTREAM_CHECK}\`"
             echo "- Custom modules:"
             echo "  - ngx_http_substitutions_filter_module: \`${SUB_FILTER_VERSION}\`"
             echo "  - ngx_http_proxy_connect_module: \`${PROXY_CONNECT_VERSION}\`"
@@ -85,6 +121,10 @@ jobs:
     name: Build nginx amd64
     needs: resolve
     runs-on: ubuntu-latest
+    env:
+      ENABLE_SUB_FILTER: ${{ needs.resolve.outputs.enable_sub_filter }}
+      ENABLE_PROXY_CONNECT: ${{ needs.resolve.outputs.enable_proxy_connect }}
+      ENABLE_UPSTREAM_CHECK: ${{ needs.resolve.outputs.enable_upstream_check }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -128,6 +168,10 @@ jobs:
     name: Build nginx arm64
     needs: resolve
     runs-on: ubuntu-24.04-arm
+    env:
+      ENABLE_SUB_FILTER: ${{ needs.resolve.outputs.enable_sub_filter }}
+      ENABLE_PROXY_CONNECT: ${{ needs.resolve.outputs.enable_proxy_connect }}
+      ENABLE_UPSTREAM_CHECK: ${{ needs.resolve.outputs.enable_upstream_check }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5

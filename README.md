@@ -128,6 +128,39 @@ sha256sum -c nginx-*.sha256
 -   push master 自动构建
 -   workflow_dispatch 手动构建
 -   输入 nginx_version 指定版本
+-   手动控制第三方模块是否编译，默认全部开启：
+    -   enable_sub_filter
+    -   enable_proxy_connect
+    -   enable_upstream_check
+
+## HAP Webhook
+
+GitHub Actions 可将 Release 信息推送到明道云 HAP Webhook。附件字段使用
+JSON 字符串传递多个下载地址：
+
+```json
+{
+  "project_name": "nginx",
+  "repository": "1447443432/nginx-make",
+  "version": "1.30.4",
+  "tag": "nginx-1.30.4",
+  "release_url": "https://github.com/1447443432/nginx-make/releases/tag/nginx-1.30.4",
+  "amd64_name": "nginx-1.30.4-glibc2.17-amd64.tar.gz",
+  "amd64_url": "https://example.com/nginx-amd64.tar.gz",
+  "amd64_sha256": "sha256-value",
+  "arm64_name": "nginx-1.30.4-glibc2.17-arm64.tar.gz",
+  "arm64_url": "https://example.com/nginx-arm64.tar.gz",
+  "arm64_sha256": "sha256-value",
+  "attachment_urls": "[\"https://example.com/nginx-amd64.tar.gz\",\"https://example.com/nginx-arm64.tar.gz\"]",
+  "commit_sha": "e7daeca",
+  "run_id": "manual-test-20260821",
+  "run_url": "https://github.com/1447443432/nginx-make/actions",
+  "build_status": "success"
+}
+```
+
+其中 `attachment_urls` 必须是字符串形式的 JSON 数组，HAP 工作流可将其中
+的下载地址写入附件字段。
 
 ## 构建参数
 
@@ -153,6 +186,16 @@ DEBUG=true ./build.sh
 
 ``` bash
 SHOW_BUILD_LOG=true ./build.sh
+```
+
+### 第三方模块开关
+
+本地构建时可通过环境变量关闭第三方模块，默认值为 `true`：
+
+``` bash
+ENABLE_SUB_FILTER=false ./build-nginx.sh amd64
+ENABLE_PROXY_CONNECT=false ./build-nginx.sh amd64
+ENABLE_UPSTREAM_CHECK=false ./build-nginx.sh amd64
 ```
 
 ## 版本兼容

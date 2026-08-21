@@ -133,6 +133,9 @@ docker_run()
         --user 0:0 \
         -e OUTPUT_DIR="${CONTAINER_OUTPUT_DIR}" \
         -e NGINX_VERSION="${NGINX_VERSION}" \
+        -e ENABLE_SUB_FILTER="${ENABLE_SUB_FILTER:-true}" \
+        -e ENABLE_PROXY_CONNECT="${ENABLE_PROXY_CONNECT:-true}" \
+        -e ENABLE_UPSTREAM_CHECK="${ENABLE_UPSTREAM_CHECK:-true}" \
         -v "${OUTPUT_DIR}:${CONTAINER_OUTPUT_DIR}" \
         "${IMAGE_NAME}"
 }
