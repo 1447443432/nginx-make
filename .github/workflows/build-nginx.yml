@@ -291,12 +291,12 @@ jobs:
           ATTACHMENT_URLS="$(jq -cn --arg amd64 "${AMD64_URL}" --arg arm64 "${ARM64_URL}" '[$amd64,$arm64]')"
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           jq -n \
-            --arg repository "${GITHUB_REPOSITORY}" --arg version "${VERSION}" --arg tag "${RELEASE_TAG}" \
+            --arg project_name "nginx" --arg repository "${GITHUB_REPOSITORY}" --arg version "${VERSION}" --arg tag "${RELEASE_TAG}" \
             --arg release_url "${RELEASE_URL}" --arg amd64_name "${AMD64_NAME}" --arg amd64_url "${AMD64_URL}" \
             --arg amd64_sha256 "${AMD64_SHA256}" --arg arm64_name "${ARM64_NAME}" --arg arm64_url "${ARM64_URL}" \
             --arg arm64_sha256 "${ARM64_SHA256}" --arg attachment_urls "${ATTACHMENT_URLS}" \
             --arg commit_sha "${GITHUB_SHA}" --arg run_id "${GITHUB_RUN_ID}" --arg run_url "${RUN_URL}" \
-            '{repository:$repository,version:$version,tag:$tag,release_url:$release_url,amd64_name:$amd64_name,amd64_url:$amd64_url,amd64_sha256:$amd64_sha256,arm64_name:$arm64_name,arm64_url:$arm64_url,arm64_sha256:$arm64_sha256,attachment_urls:$attachment_urls,commit_sha:$commit_sha,run_id:$run_id,run_url:$run_url,build_status:"success"}' \
+            '{project_name:$project_name,repository:$repository,version:$version,tag:$tag,release_url:$release_url,amd64_name:$amd64_name,amd64_url:$amd64_url,amd64_sha256:$amd64_sha256,arm64_name:$arm64_name,arm64_url:$arm64_url,arm64_sha256:$arm64_sha256,attachment_urls:$attachment_urls,commit_sha:$commit_sha,run_id:$run_id,run_url:$run_url,build_status:"success"}' \
             >hap-payload.json
           jq -e '(.attachment_urls|type)=="string" and ((.attachment_urls|fromjson|type)=="array") and ((.attachment_urls|fromjson|length)==2)' hap-payload.json >/dev/null
           jq . hap-payload.json
