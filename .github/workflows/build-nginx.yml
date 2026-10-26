@@ -44,7 +44,7 @@ env:
 jobs:
   resolve:
     name: Resolve nginx version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       nginx_version: ${{ steps.resolve.outputs.nginx_version }}
       release_tag: ${{ steps.resolve.outputs.release_tag }}
@@ -126,7 +126,7 @@ jobs:
         include:
           - architecture: amd64
             platform: linux/amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - architecture: arm64
             platform: linux/arm64
             runner: ubuntu-24.04-arm
@@ -184,7 +184,7 @@ jobs:
     needs:
       - resolve
       - build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ needs.resolve.outputs.nginx_version }}
       tag: ${{ needs.resolve.outputs.release_tag }}
@@ -244,7 +244,7 @@ jobs:
   sync-hap:
     name: Sync Release to HAP
     needs: release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
@@ -325,7 +325,7 @@ jobs:
   cleanup-runs:
     name: Keep latest successful run
     needs: sync-hap
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       actions: write
       contents: read
