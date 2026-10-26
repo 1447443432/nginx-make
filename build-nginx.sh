@@ -31,7 +31,7 @@ init_env()
     if [ -n "${VERSION_ARG}" ]; then
         NGINX_VERSION="${VERSION_ARG}"
     else
-        NGINX_VERSION=${NGINX_VERSION:-1.30.4}
+        NGINX_VERSION=${NGINX_VERSION:-1.30.6}
     fi
 }
 

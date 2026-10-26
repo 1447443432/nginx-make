@@ -4,7 +4,7 @@ set -euo pipefail
 BASE_DIR=$(cd "$(dirname "$0")" && pwd)
 cd "${BASE_DIR}"
 
-DEFAULT_NGINX_VERSION="1.30.4"
+DEFAULT_NGINX_VERSION="1.30.6"
 
 if [ -f config/nginx-version.conf ]; then
     source config/nginx-version.conf

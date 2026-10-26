@@ -37,7 +37,7 @@
 
 默认版本：
 
-    nginx 1.30.4
+    nginx 1.30.6
 
 版本配置：
 
@@ -46,7 +46,7 @@
 示例：
 
 ``` bash
-NGINX_VERSION=1.30.4
+NGINX_VERSION=1.30.6
 ```
 
 ## 包含模块
@@ -110,8 +110,8 @@ docker run   --rm   -e OUTPUT_DIR=/output   -v $(pwd)/output:/output   nginx-bui
 示例：
 
     output/
-    ├── nginx-1.30.4-glibc2.17-amd64.tar.gz
-    ├── nginx-1.30.4-glibc2.17-amd64.tar.gz.sha256
+    ├── nginx-1.30.6-glibc2.17-amd64.tar.gz
+    ├── nginx-1.30.6-glibc2.17-amd64.tar.gz.sha256
     ├── build-info.txt
     └── build.log
 
@@ -132,6 +132,10 @@ sha256sum -c nginx-*.sha256
     -   enable_sub_filter
     -   enable_proxy_connect
     -   enable_upstream_check
+-   构建、Release 与 HAP 同步成功后，自动删除本 Workflow 早于当前运行的已完成记录
+
+清理运行记录会一并删除对应日志和 Actions Artifacts；GitHub Release 附件保留。
+若本次构建失败，旧的成功记录不会被清理。
 
 ## HAP Webhook
 
@@ -142,13 +146,13 @@ JSON 字符串传递多个下载地址：
 {
   "project_name": "nginx",
   "repository": "1447443432/nginx-make",
-  "version": "1.30.4",
-  "tag": "nginx-1.30.4",
-  "release_url": "https://github.com/1447443432/nginx-make/releases/tag/nginx-1.30.4",
-  "amd64_name": "nginx-1.30.4-glibc2.17-amd64.tar.gz",
+  "version": "1.30.6",
+  "tag": "nginx-1.30.6",
+  "release_url": "https://github.com/1447443432/nginx-make/releases/tag/nginx-1.30.6",
+  "amd64_name": "nginx-1.30.6-glibc2.17-amd64.tar.gz",
   "amd64_url": "https://example.com/nginx-amd64.tar.gz",
   "amd64_sha256": "sha256-value",
-  "arm64_name": "nginx-1.30.4-glibc2.17-arm64.tar.gz",
+  "arm64_name": "nginx-1.30.6-glibc2.17-arm64.tar.gz",
   "arm64_url": "https://example.com/nginx-arm64.tar.gz",
   "arm64_sha256": "sha256-value",
   "attachment_urls": "[\"https://example.com/nginx-amd64.tar.gz\",\"https://example.com/nginx-arm64.tar.gz\"]",
